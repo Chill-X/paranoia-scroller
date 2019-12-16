@@ -30,6 +30,13 @@ server.on('error', onError);
 server.on('listening', onListening);
 
 /**
+ * Update songlist database daily.
+ */
+
+var updater = require('../updater');
+updater();
+
+/**
  * Normalize a port into a number, string, or false.
  */
 
