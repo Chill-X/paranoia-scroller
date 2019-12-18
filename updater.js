@@ -13,15 +13,19 @@ admin.initializeApp({
 
 function scrapeData() {
   listUrl = 'http://bemaniwiki.com/index.php?DanceDanceRevolution%20A20/%B5%EC%B6%CA%A5%EA%A5%B9%A5%C8';
+  newListUrl = 'http://bemaniwiki.com/index.php?DanceDanceRevolution%20A20/%BF%B7%B6%CA%A5%EA%A5%B9%A5%C8';
   mainPageUrl = 'https://zenius-i-vanisher.com/v5.2/simfiles.php?category=simfiles';
   categoryPageUrl = 'https://zenius-i-vanisher.com/v5.2/viewsimfilecategory.php?categoryid=';
   songPageUrl = 'https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=';
+  newCategoryId = 1170;
 
   let rows = null;
+  let newRows = null;
 
   // Get full song list and category list
-  axios.all([axios.get(listUrl), axios.get(mainPageUrl)])
-    .then(axios.spread((list, mainPage) => {
+  console.log('Scraping from main page...');
+  axios.all([axios.get(listUrl), axios.get(newListUrl), axios.get(mainPageUrl)])
+    .then(axios.spread((list, newList, mainPage) => {
       // full song listing from bemaniwiki
       const dom = new JSDOM(list.data);
       rows = dom.window.document
@@ -30,7 +34,15 @@ function scrapeData() {
         .getElementsByTagName('tr');
       // if titles require extraction for comparison do here
 
-      // main page with category listing from ZiV
+      // new song listing from bemaniwiki
+      const newDom = new JSDOM(newList.data);
+      newRows = newDom.window.document
+        .querySelector('.style_table')
+        .querySelector('tbody')
+        .getElementsByTagName('tr');
+      
+      // main page with category listing from ZiV 
+      // ADD CURRENT CATEGORY ID
       const mainDom = new JSDOM(mainPage.data);
       let options = mainDom.window.document
         .getElementsByTagName('tr')[1]
@@ -40,13 +52,17 @@ function scrapeData() {
         let categoryId = options[i].getAttribute('value');
         getCategoryPages.push(axios.get(categoryPageUrl + categoryId));
       }
+      // A20 category page
+      getCategoryPages.push(axios.get(categoryPageUrl + newCategoryId));
 
+      console.log('Scraping from category page...');
       return axios.all(getCategoryPages);
     }))
     .then(categoryPages => {
       
-      let getSongPages = [];
+      let songPageBatches = [];
       for (let i = 0; i < categoryPages.length; i++) {
+        let songPages = [];
         // song listing from ZiV
         const categoryDom = new JSDOM(categoryPages[i].data);
         // check for empty category
@@ -64,16 +80,28 @@ function scrapeData() {
               .querySelector('a')
               .getAttribute('name')
               .substring(3);
-            getSongPages.push(axios.get(songPageUrl + songId));
+            songPages.push(songPageUrl + songId);
           }
         }
+        songPageBatches.push(songPages);
       }
 
       // get song pages
-      return axios.all(getSongPages);
-    })
-    .then(songPages => {
-      console.log(songPages);
+      console.log('Scraping from song page...');
+      // console.log(songPageBatches);
+      // TRY REDUCE
+      // return axios.all(getSongPages);
+      songPageBatches.reduce((acc, batch) => {
+        return acc.then(() => {
+          let getSongPages = [];
+          for (let i = 0; i < batch.length; i++) {
+            getSongPages.push(axios.get(batch[i]));
+          }
+          return axios.all(getSongPages);
+        }).then(songPages => {
+          console.log(songPages);
+        })
+      }, Promise.resolve());
     })
     .catch (error => {
       console.log(error);
